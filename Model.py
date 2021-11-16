@@ -28,10 +28,8 @@ class SeparableConv2d(nn.Module):
 class DenseSepConv(nn.Module):
     def __init__(self, in_channel=512, depth=512):
         super(DenseSepConv, self).__init__()
-        # global average pooling : init nn.AdaptiveAvgPool2d ;also forward torch.mean(,,keep_dim=True)
         self.mean = nn.AdaptiveAvgPool2d((1, 1))
         self.conv = nn.Conv2d(in_channel, depth, 1, 1)
-        # k=1 s=1 no pad
         self.SepConv_block1 = nn.Sequential(
             SeparableConv2d(in_channel, depth, kernel_size=3, padding=1, dilation=1, bias=False),
             nn.BatchNorm2d(depth),
@@ -76,9 +74,9 @@ class DenseSepConv(nn.Module):
 
         SepConv_block18 = self.SepConv_block18(cat_block12)
 
-        net = self.conv_1x1_output_18(torch.cat([image_features, SepConv_block1, SepConv_block6,
+        dsc = self.conv_1x1_output_18(torch.cat([image_features, SepConv_block1, SepConv_block6,
                                               SepConv_block12, SepConv_block18], dim=1))
-        return net
+        return dsc
 
 # MSA Module
 class ChannelAttention(nn.Module):
@@ -145,9 +143,9 @@ class MSAblock(nn.Module):
 
         feat_ca = self.ca(feat)
         feat_sa = self.sa(feat)
-        feat = self.conv1x1[1](torch.cat([feat_ca, feat_sa], dim=1))
+        feat_msa = self.conv1x1[1](torch.cat([feat_ca, feat_sa], dim=1))
 
-        return feat
+        return feat_msa
 
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels, n_filters):
@@ -224,15 +222,16 @@ class GDCSegNet(nn.Module):
         e3 = self.encoder3(e2)
         e4 = self.encoder4(e3)
 
-        mid = self.msa(e4)
+        msa_out = self.msa(e4)
+        
         # Decoder
-        d4 = self.decoder4(mid) + e3
+        d4 = self.decoder4(msa_out) + e3
         d3 = self.decoder3(d4) + e2
         d2 = self.decoder2(d3) + e1
         d1 = self.decoder1(d2)
-        d1 = self.dsc(d1)
+        dsc_out = self.dsc(d1)
 
-        out = self.finaldeconv1(d1)
+        out = self.finaldeconv1(dsc_out)
         out = self.finalrelu1(out)
         out = self.finalconv2(out)
         out = self.finalrelu2(out)
